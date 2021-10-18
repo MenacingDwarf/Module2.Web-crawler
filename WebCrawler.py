@@ -63,10 +63,11 @@ class WebCrawler:
     def is_internal(self, url):
         return url is not None and url.startswith(self.main_url)
 
-    def run(self):
+    def run(self, debug=True):
         while self.urls_to_visit:
             self.url_index = self.url_index + 1
-            print(f'Crawling: {self.url_index} of {len(self.urls_to_visit) + len(self.visited_urls)}')
+            if debug:
+                print(f'Crawling: {self.url_index} of {len(self.urls_to_visit) + len(self.visited_urls)}')
             
             url = self.urls_to_visit.pop(0)
             logging.info(f'Crawling {url}: {self.url_index} of {len(self.urls_to_visit) + len(self.visited_urls) + 1}')
