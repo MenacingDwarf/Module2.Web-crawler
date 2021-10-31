@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 import sys
 import time
+import hyperlink
 
 class UrlInfo:
     def __init__(self, url, is_internal, is_valid):
@@ -32,6 +33,15 @@ class WebCrawler:
                 path = urljoin(url, path)
             yield path
 
+    def is_internal(self, url):
+        return url is not None and url.startswith(self.main_url)
+
+    def is_document(self, url):
+        return url.endswith('.doc') or url.endswith('.docx') or url.endswith('.pdf')
+
+    def is_image(self, url):
+        return url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.gif') or url.endswith('.svg')
+
     def crawl(self, url, log=True):
         html, success = self.download_url(url)
         if log:
@@ -45,30 +55,27 @@ class WebCrawler:
         if url != self.main_url:
             self.full_urls.append(UrlInfo(url, True, True))
 
-        for new_url in self.get_linked_urls(url, html):
+        for clear_url in self.get_linked_urls(url, html):
+            new_url = hyperlink.parse(clear_url).normalize().replace(fragment=u'').to_text()
             if new_url is None or not (new_url.startswith("https://") or new_url.startswith("http://")) or new_url == url:
                 continue
 
             if self.is_internal(new_url):
-                if not new_url in self.visited_urls and not new_url in self.urls_to_visit:
-                    self.urls_to_visit.append(new_url)
+                if not new_url in self.visited_urls and not new_url in self.urls_to_visit and len(list(filter(lambda item : item.url == new_url, self.full_urls))) == 0:
                     if log:
                         logging.info(f'---- New internal URL: {new_url}')
+
+                    if self.is_document(new_url) or self.is_image(new_url):
+                        self.full_urls.append(UrlInfo(new_url, True, True))
+                    else:
+                        self.urls_to_visit.append(new_url)
+
             else:
                 self.total_externals = self.total_externals + 1
                 if len(list(filter(lambda item : item.url == new_url, self.full_urls))) == 0:
-                    try:
-                        _, valid = self.download_url(new_url)
-                        self.full_urls.append(UrlInfo(new_url, False, valid))
-                        if log:
-                            logging.info(f'---- New external URL: {new_url}, valid: {"True" if valid else "False"}')
-                    except Exception:
-                        self.full_urls.append(UrlInfo(new_url, False, False))
-                        if log:
-                            logging.info(f'---- New external URL: {new_url}, valid: False')
-
-    def is_internal(self, url):
-        return url is not None and url.startswith(self.main_url)
+                    self.full_urls.append(UrlInfo(new_url, False, True))
+                    if log:
+                        logging.info(f'---- New external URL: {new_url}')
 
     def run(self, debug=True, log=True):
         start_time = time.time()
@@ -102,7 +109,7 @@ class WebCrawler:
         return list(filter(lambda item : not item.is_internal, self.full_urls))
 
     def get_documents_urls(self):
-        return list(filter(lambda item : item.url.endswith('.doc') or item.url.endswith('.docx') or item.url.endswith('.pdf'), self.full_urls))
+        return list(filter(lambda item : self.is_document(item.url), self.full_urls))
 
     def report(self, short = False):
         print('\n--------- CRAWLER REPORT --------\n')
@@ -111,6 +118,9 @@ class WebCrawler:
         print(f'Total unique external urls: {len(self.get_external_urls())}')
         print(f'Total external urls: {self.total_externals}')
         print(f'Total unique document urls: {len(self.get_documents_urls())}')
+        print(f'Valid internals: {len(list(filter(lambda item : item.is_valid,self.get_internal_urls())))}')
+        print(f'Invalid internals: {len(list(filter(lambda item : not item.is_valid,self.get_internal_urls())))}')
+
 
         if short:
             return
@@ -121,11 +131,11 @@ class WebCrawler:
 
         print('\n--------- EXTERNAL URLS ---------\n')
         for link in self.get_external_urls():
-            print("    OK   " if link.is_valid else "NOT OK   ", link.url)
+            print("         " if link.is_valid else "NOT OK   ", link.url)
 
         print('\n--------- DOCUMENT URLS ---------\n')
         for link in self.get_documents_urls():
-            print("    OK   " if link.is_valid else "NOT OK   ", link.url)
+            print("         " if link.is_valid else "NOT OK   ", link.url)
 
 if __name__ == '__main__':
     crawler = WebCrawler(str(sys.argv[1]))
