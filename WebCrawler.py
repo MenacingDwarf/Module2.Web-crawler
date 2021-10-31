@@ -15,7 +15,9 @@ class UrlInfo:
 class WebCrawler:
     def __init__(self, url):
         self.main_url = url
+        self.main_host = hyperlink.parse(self.main_url).host
         self.visited_urls = []
+        self.subdomains = []
         self.urls_to_visit = [url]
         self.full_urls = []
         self.url_index = 0
@@ -56,10 +58,22 @@ class WebCrawler:
             self.full_urls.append(UrlInfo(url, True, True))
 
         for clear_url in self.get_linked_urls(url, html):
-            new_url = hyperlink.parse(clear_url).normalize().replace(fragment=u'').to_text()
+            # check, parse and normalize url
+            try:
+                new_url = hyperlink.parse(clear_url).normalize().replace(fragment=u'').to_text()
+            except Exception:
+                continue
             if new_url is None or not (new_url.startswith("https://") or new_url.startswith("http://")) or new_url == url:
                 continue
 
+            # check subdomain
+            new_host = hyperlink.parse(clear_url).host
+            if new_host != self.main_host and new_host.endswith(self.main_host) and not new_host in self.subdomains:
+                if log:
+                    logging.info(f'---- New subdomain: {new_host}')
+                self.subdomains.append(new_host)
+
+            # if new internal url add it to queue, check its subdomain
             if self.is_internal(new_url):
                 if not new_url in self.visited_urls and not new_url in self.urls_to_visit and len(list(filter(lambda item : item.url == new_url, self.full_urls))) == 0:
                     if log:
@@ -85,6 +99,8 @@ class WebCrawler:
             logging.info(f'-----------------------------------')
         while self.urls_to_visit:
             self.url_index = self.url_index + 1
+            if self.url_index > 100:
+                break
             url = self.urls_to_visit.pop(0)
 
             if debug:
@@ -111,7 +127,7 @@ class WebCrawler:
     def get_documents_urls(self):
         return list(filter(lambda item : self.is_document(item.url), self.full_urls))
 
-    def report(self, short = False):
+    def report(self, short = False, to_file=None):
         print('\n--------- CRAWLER REPORT --------\n')
         print(f'Total visited urls: {len(self.full_urls)}')
         print(f'Total unique internal urls: {len(self.get_internal_urls())}')
@@ -120,7 +136,19 @@ class WebCrawler:
         print(f'Total unique document urls: {len(self.get_documents_urls())}')
         print(f'Valid internals: {len(list(filter(lambda item : item.is_valid,self.get_internal_urls())))}')
         print(f'Invalid internals: {len(list(filter(lambda item : not item.is_valid,self.get_internal_urls())))}')
+        print(f'Total subdomains: {len(self.subdomains)}')
 
+        if (to_file is not None):
+            with open(to_file, "w") as f:
+                f.write('\n--------- CRAWLER REPORT --------\n\n')
+                f.write(f'Total visited urls: {len(self.full_urls)}\n')
+                f.write(f'Total unique internal urls: {len(self.get_internal_urls())}\n')
+                f.write(f'Total unique external urls: {len(self.get_external_urls())}\n')
+                f.write(f'Total external urls: {self.total_externals}\n')
+                f.write(f'Total unique document urls: {len(self.get_documents_urls())}\n')
+                f.write(f'Valid internals: {len(list(filter(lambda item : item.is_valid,self.get_internal_urls())))}\n')
+                f.write(f'Invalid internals: {len(list(filter(lambda item : not item.is_valid,self.get_internal_urls())))}\n')
+                f.write(f'Total subdomains: {len(self.subdomains)}')
 
         if short:
             return
@@ -131,13 +159,37 @@ class WebCrawler:
 
         print('\n--------- EXTERNAL URLS ---------\n')
         for link in self.get_external_urls():
-            print("         " if link.is_valid else "NOT OK   ", link.url)
+            print("         ", link.url)
 
         print('\n--------- DOCUMENT URLS ---------\n')
         for link in self.get_documents_urls():
-            print("         " if link.is_valid else "NOT OK   ", link.url)
+            print("         ", link.url)
+
+        print('\n---------- SUBDOMAINS -----------\n')
+        for link in self.subdomains:
+            print("         ", link)
+
+        if (to_file is not None):
+            with open(to_file, "a") as f:
+                f.write('\n--------- INTERNAL URLS ---------\n\n')
+                for link in self.get_internal_urls():
+                    f.write(f'{"    OK   " if link.is_valid else "NOT OK   "} {link.url}\n')
+
+                f.write('\n--------- EXTERNAL URLS ---------\n\n')
+                for link in self.get_external_urls():
+                    f.write(f'{"         " if link.is_valid else "NOT OK   "} {link.url}\n')
+
+                f.write('\n--------- DOCUMENT URLS ---------\n\n')
+                for link in self.get_documents_urls():
+                    f.write(f'{"         " if link.is_valid else "NOT OK   "} {link.url}\n')
+
+                f.write('\n---------- SUBDOMAINS -----------\n\n')
+                for link in self.subdomains:
+                    f.write(f'          {link}\n')
+
+
 
 if __name__ == '__main__':
     crawler = WebCrawler(str(sys.argv[1]))
     crawler.run()
-    crawler.report()
+    crawler.report(to_file=sys.argv[2] if len(sys.argv) > 2 else None)
