@@ -91,7 +91,7 @@ class WebCrawler:
                     if log:
                         logging.info(f'---- New external URL: {new_url}')
 
-    def run(self, debug=True, log=True):
+    def run(self, debug=True, log=True, max_internals=None):
         start_time = time.time()
         if log:
             logging.basicConfig(filename='crawler.log', encoding='utf-8', level=logging.INFO)
@@ -99,7 +99,7 @@ class WebCrawler:
             logging.info(f'-----------------------------------')
         while self.urls_to_visit:
             self.url_index = self.url_index + 1
-            if self.url_index > 100:
+            if max_internals is not None and self.url_index > max_internals:
                 break
             url = self.urls_to_visit.pop(0)
 
