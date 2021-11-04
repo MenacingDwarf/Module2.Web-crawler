@@ -20,12 +20,16 @@ class WebCrawler:
         self.subdomains = []
         self.urls_to_visit = [url]
         self.full_urls = []
+        self.all_urls = []
         self.url_index = 0
         self.total_externals = 0
 
     def download_url(self, url):
-        r = requests.get(url)
-        return r.text, r.status_code == 200
+        try:
+            r = requests.get(url, timeout=5.0)
+            return r.text, r.status_code == 200
+        except Exception:
+            return "", False
 
     def get_linked_urls(self, url, html):
         soup = BeautifulSoup(html, 'html.parser')
@@ -59,11 +63,17 @@ class WebCrawler:
 
         for clear_url in self.get_linked_urls(url, html):
             # check, parse and normalize url
-            try:
-                new_url = hyperlink.parse(clear_url).normalize().replace(fragment=u'').to_text()
-            except Exception:
+            if clear_url is None or not (clear_url.startswith("https://") or clear_url.startswith("http://")) or clear_url == url:
                 continue
-            if new_url is None or not (new_url.startswith("https://") or new_url.startswith("http://")) or new_url == url:
+            try:
+                url_parsed = hyperlink.parse(clear_url).normalize().replace(fragment=u'')
+                url_parsed = url_parsed.replace(scheme=u'https')
+                if url_parsed.host.startswith("www."):
+                    url_parsed = url_parsed.replace(host=url_parsed.host.replace("www.", "", 1))
+                new_url = url_parsed.to_text()
+                if new_url is None or new_url == url:
+                    continue
+            except Exception:
                 continue
 
             # check subdomain
@@ -75,19 +85,21 @@ class WebCrawler:
 
             # if new internal url add it to queue, check its subdomain
             if self.is_internal(new_url):
-                if not new_url in self.visited_urls and not new_url in self.urls_to_visit and len(list(filter(lambda item : item.url == new_url, self.full_urls))) == 0:
+                if not new_url in self.visited_urls and not new_url in self.urls_to_visit and not new_url in self.all_urls:
                     if log:
                         logging.info(f'---- New internal URL: {new_url}')
 
                     if self.is_document(new_url) or self.is_image(new_url):
                         self.full_urls.append(UrlInfo(new_url, True, True))
+                        self.all_urls.append(new_url)
                     else:
                         self.urls_to_visit.append(new_url)
 
             else:
                 self.total_externals = self.total_externals + 1
-                if len(list(filter(lambda item : item.url == new_url, self.full_urls))) == 0:
+                if not new_url in self.all_urls:
                     self.full_urls.append(UrlInfo(new_url, False, True))
+                    self.all_urls.append(new_url)
                     if log:
                         logging.info(f'---- New external URL: {new_url}')
 
