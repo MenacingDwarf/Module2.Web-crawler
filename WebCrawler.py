@@ -43,10 +43,12 @@ class WebCrawler:
         return url is not None and url.startswith(self.main_url)
 
     def is_document(self, url):
-        return url.endswith('.doc') or url.endswith('.docx') or url.endswith('.pdf')
+        lower_url = url.lower()
+        return lower_url.endswith('.doc') or lower_url.endswith('.docx') or lower_url.endswith('.pdf')
 
     def is_image(self, url):
-        return url.endswith('.jpg') or url.endswith('.jpeg') or url.endswith('.gif') or url.endswith('.svg')
+        lower_url = url.lower()
+        return lower_url.endswith('.jpg') or lower_url.endswith('.jpeg') or lower_url.endswith('.gif') or lower_url.endswith('.svg')
 
     def crawl(self, url, log=True):
         html, success = self.download_url(url)
